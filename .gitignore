@@ -1,0 +1,71 @@
+# Build artifacts
+*.o
+*.obj
+*.exe
+*.out
+*.app
+udp_quote_printer
+
+# CMake (if you add it back later)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+build/
+dist/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Core dumps
+core
+core.*
+
+# Log files
+*.log
+*.out
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Python cache (for simulator)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Backup files
+*~
+*.orig
+*.rej
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 
