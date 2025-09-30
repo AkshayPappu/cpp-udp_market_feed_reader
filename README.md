@@ -1,198 +1,216 @@
-# UDP Quote Printer - Low-Latency Market Data System
+# UDP Market Data System - Low-Latency Order Book Processing
 
-A high-performance C++ system for receiving, processing, and analyzing real-time market data quotes via UDP with sub-microsecond latency measurement capabilities.
+A high-performance market data processing system with Python simulator, C++ order book processor, and REST API. Demonstrates real-time Level 2/3 order book reconstruction with sub-microsecond latency measurement.
 
-## 🚀 Features
+## 🚀 Quick Start
 
-### Core Functionality
-- **UDP Market Data Reception**: Listens on configurable port for incoming market data quotes
-- **Lock-Free SPSC Ring Buffer**: Single Producer Single Consumer ring buffer for zero-copy inter-thread communication
-- **Producer-Consumer Architecture**: Decoupled data ingestion and processing for optimal performance
-- **Real-Time Latency Measurement**: End-to-end latency tracking from exchange to strategy execution
+### Prerequisites
+- GCC 7+ with C++17 support
+- Python 3.7+
+- Linux (tested on RHEL 9)
 
-### Performance Optimizations
-- **Cache-Aligned Memory**: 64-byte aligned allocations to prevent false sharing
-- **Lock-Free Operations**: Atomic operations with relaxed memory ordering for minimal contention
-- **Power-of-2 Buffer Sizes**: Efficient modulo operations using bitwise AND
-- **Single Writer Rule**: Only consumer thread prints/logs to avoid output contention
-- **Monotonic Clock Pipeline**: Consistent timing using `std::chrono::steady_clock` throughout
+### Build & Run
+```bash
+# Build all components
+cd order_book_processor && make
+cd ../order_book_api && make standalone_api
 
-### Latency Breakdown
-The system measures and reports detailed latency metrics:
-- **Exchange → UDP Receive**: Network transmission time
-- **UDP Receive → Queue**: Time to parse and enqueue quote
-- **Queue → Strategy**: Time from queue to consumer processing
-- **Total End-to-End**: Complete latency from exchange to strategy execution
+# Start the complete system
+./start_system.sh
 
-### Market Data Support
-- **JSON Quote Format**: Parses standard market data fields (symbol, bid/ask prices & sizes, exchange, timestamp)
-- **Flexible Exchange Support**: Configurable for different market data feeds
-- **Quote Validation**: Robust parsing with whitespace tolerance
+# Stop the system
+./shutdown_system.sh
+```
+
+### Test API
+```bash
+curl http://localhost:8080/api/health
+curl http://localhost:8080/api/symbols
+curl http://localhost:8080/api/metrics/AAPL
+```
+
+## 📁 Project Structure
+
+```
+├── market_feed_client/          # Python market data simulator
+├── order_book_processor/        # C++ order book processor (multicast publisher)
+├── order_book_api/             # REST API server (multicast subscriber)
+├── start_system.sh             # System startup script
+└── shutdown_system.sh          # System shutdown script
+```
 
 ## 🏗️ Architecture
 
-### Components
-
-#### UDPListener (`listener.hpp`)
-- **Header-only implementation** for easy integration
-- **Non-blocking socket operations** with `MSG_DONTWAIT`
-- **Configurable port binding** with socket reuse
-- **Callback-based quote processing** for flexible integration
-
-#### SPSCRingBuffer (`queue.hpp`)
-- **Template-based design** supporting any data type
-- **Lock-free operations** using atomic sequence numbers
-- **Cache-aligned memory layout** for optimal performance
-- **Power-of-2 capacity** for efficient modulo operations
-
-#### Main Application (`main.cpp`)
-- **Producer thread** (`ingress_producer`): Receives UDP data and enqueues quotes
-- **Consumer thread** (`print_consumer`): Processes quotes and displays latency metrics
-- **Graceful shutdown** handling with signal management
-- **Performance statistics** aggregation and reporting
-
-### Threading Model
+**Decoupled System with UDP Multicast:**
 ```
-[UDP Socket] → [Producer Thread] → [SPSC Ring Buffer] → [Consumer Thread] → [Output]
-     ↓              ↓                      ↓                ↓
-  Network      Parse & Enqueue        Lock-free         Process &
-  Receive      (No Printing)         Communication     Print (Only)
+[Python Simulator] → [Order Book Processor] → [UDP Multicast] → [API Server]
+     ↓                        ↓                      ↓              ↓
+  Generate Events        Process & Publish       224.0.0.1:12346  Serve REST API
 ```
 
-## 📊 Performance Characteristics
+**Components:**
+- **Market Feed Client**: Generates realistic Level 2/3 order book events
+- **Order Book Processor**: Processes events, maintains order books, publishes via multicast
+- **API Server**: Subscribes to multicast, serves REST API with real-time metrics
 
-### Latency Targets
-- **UDP → Queue**: < 100 nanoseconds typical
-- **Queue → Strategy**: < 50 microseconds typical  
-- **Total End-to-End**: < 200 microseconds typical
+## 🎯 Features
 
-### Throughput
-- **Designed for**: High-frequency market data (1000+ quotes/second)
-- **Buffer capacity**: Configurable (default: power-of-2 sizing)
-- **Memory usage**: Minimal overhead with aligned allocations
+### Core Capabilities
+- **Level 2/3 Order Book Events**: ADD, MODIFY, CANCEL, TRADE, QUOTE_UPDATE
+- **Real-Time Order Book Reconstruction**: Live in-memory order books
+- **Lock-Free SPSC Ring Buffer**: Zero-copy inter-thread communication
+- **UDP Multicast Decoupling**: Scalable publisher-subscriber architecture
+- **REST API**: Real-time order book metrics and trade data
 
-## 🛠️ Build & Run
+### Performance Optimizations
+- **Cache-Aligned Memory**: 64-byte aligned allocations
+- **Lock-Free Operations**: Atomic operations with relaxed memory ordering
+- **Sub-Microsecond Latency**: End-to-end latency measurement
+- **High Throughput**: 1000+ events/second processing
 
-### Prerequisites
-- **Compiler**: GCC 7+ with C++17 support
-- **OS**: Linux (tested on RHEL 9)
-- **Python**: 3.7+ (for market data simulator)
+### API Endpoints
+- `GET /api/health` - System health check
+- `GET /api/symbols` - Available symbols
+- `GET /api/metrics/{SYMBOL}` - Order book metrics (bid/ask, spread, midprice, etc.)
+- `GET /api/depth/{SYMBOL}` - Order book depth snapshot
+- `GET /api/trades/{SYMBOL}` - Recent trade information
 
-### Build
+## 📊 Latency Measurement
+
+The system measures end-to-end latency:
+- **Exchange → UDP Receive**: Network transmission time
+- **UDP Receive → Queue**: Parse and enqueue time
+- **Queue → Strategy**: Processing time
+- **Total End-to-End**: Complete pipeline latency
+
+**Typical Performance:**
+- UDP → Queue: < 100 nanoseconds
+- Queue → Strategy: < 50 microseconds
+- Total End-to-End: < 200 microseconds
+
+## 🛠️ Manual Operation
+
+### Build Components
 ```bash
-make                    # Build release version
-make debug             # Build with debug symbols
-make clean             # Clean build artifacts
+# Order book processor
+cd order_book_processor
+make
+
+# API server
+cd ../order_book_api
+make standalone_api
 ```
 
-### Run
+### Run Components
 ```bash
-# Terminal 1: Start market data simulator
-python3 market_feed_simulator.py
+# Terminal 1: Market data simulator
+cd market_feed_client
+python3 market_feed_simulator.py --rate 50
 
-# Terminal 2: Run UDP quote printer
+# Terminal 2: Order book processor (publisher)
+cd ../order_book_processor
 ./udp_quote_printer
 
-# Or use the automated test script
+# Terminal 3: API server (subscriber)
+cd ../order_book_api
+./standalone_api
+```
+
+## 🧪 Testing
+
+### Automated Testing
+```bash
+# Run integration test
+cd order_book_processor
 ./test_market_feed.sh
 ```
 
-## 🧪 Testing & Simulation
+### API Testing
+```bash
+# Health check
+curl http://localhost:8080/api/health
 
-### Market Data Simulator (`market_feed_simulator.py`)
-- **Realistic quote generation** with price movements and spreads
-- **Configurable symbols** (AAPL, MSFT, GOOGL, etc.)
-- **Monotonic timestamps** aligned with C++ timing
-- **UDP transmission** to localhost:12345
+# Get symbols
+curl http://localhost:8080/api/symbols
 
-### Test Script (`test_market_feed.sh`)
-- **Automated testing** with compilation and execution
-- **Background simulator** management
-- **Cleanup handling** for development workflow
+# Get metrics for AAPL
+curl http://localhost:8080/api/metrics/AAPL
 
-## 📈 Monitoring & Metrics
+# Get order book depth
+curl http://localhost:8080/api/depth/AAPL
 
-### Real-Time Output
-- **Per-quote latency breakdown** with microsecond precision
-- **Performance statistics** every 10 quotes
-- **Producer metrics** (quotes pushed, dropped, average push latency)
-
-### Performance Statistics
-```
-📊 PERFORMANCE STATISTICS (Last N quotes):
-Avg Exchange→UDP: XXX ns
-Avg UDP→Queue: XXX ns  
-Avg Queue→Strategy: XXX ns
-Avg Total Latency: XXX ns
-Producer Stats - Pushed: [tracked], Dropped: [tracked], Avg Push Latency: [tracked]
+# Get recent trades
+curl http://localhost:8080/api/trades/AAPL
 ```
 
 ## 🔧 Configuration
 
-### UDP Settings
-- **Port**: 12345 (configurable in `UDPListener` constructor)
-- **Bind Address**: `INADDR_ANY` (all interfaces)
-- **Socket Options**: `SO_REUSEADDR` enabled
+### Default Settings
+- **UDP Port**: 12345 (market data)
+- **API Port**: 8080 (REST API)
+- **Multicast**: 224.0.0.1:12346
+- **Event Rate**: 50 events/second
+- **Buffer Size**: 1024 (power-of-2)
 
-### Buffer Configuration
-- **Default Capacity**: Power-of-2 sizing for optimal performance
-- **Memory Alignment**: 64-byte cache line alignment
-- **Overflow Handling**: Drop quotes when buffer is full
+### Customization
+- Modify `start_system.sh` for different rates/ports
+- Edit `market_feed_simulator.py` for different symbols
+- Adjust buffer sizes in `main.cpp`
+
+## 📈 Monitoring
+
+### Real-Time Output
+- Per-event latency breakdown
+- Order book state (best bid/ask, spread)
+- Performance statistics every 10 events
+- API request/response logging
+
+### Performance Statistics
+```
+📊 PERFORMANCE STATISTICS (Last N events):
+Avg Exchange→UDP: XXX ns
+Avg UDP→Queue: XXX ns  
+Avg Queue→Strategy: XXX ns
+Avg Total Latency: XXX ns
+```
 
 ## 🎯 Use Cases
 
 ### Trading Systems
-- **Low-latency market data ingestion**
-- **Real-time quote processing**
-- **Performance benchmarking**
-- **System optimization research**
+- Low-latency order book event ingestion
+- Real-time limit order book reconstruction
+- Market depth analysis and liquidity tracking
+- Trade execution simulation
 
 ### Learning & Development
-- **C++ low-latency programming patterns**
-- **Lock-free data structures**
-- **Network programming with UDP**
-- **Performance measurement techniques**
-
-## 🚧 Future Enhancements
-
-### Planned Features
-- **Percentile latency reporting** (P50, P99, P99.9)
-- **Batch processing** for improved throughput
-- **Multiple UDP ports** support
-- **Configurable buffer sizes** via command line
-- **Performance profiling** integration
-
-### Optimization Opportunities
-- **CPU pinning** for producer/consumer threads
-- **NUMA-aware memory allocation**
-- **Kernel bypass** networking (DPDK, Solarflare)
-- **SIMD optimizations** for quote parsing
+- C++ low-latency programming patterns
+- Lock-free data structures
+- Network programming with UDP
+- Order book reconstruction algorithms
+- Market microstructure concepts
 
 ## 📚 Technical Details
 
 ### Memory Management
-- **Aligned allocations** using `aligned_alloc(64, size)`
-- **RAII-compliant** destructors for automatic cleanup
-- **No virtual functions** to maintain performance
+- 64-byte aligned allocations
+- RAII-compliant destructors
+- No virtual functions for performance
 
 ### Thread Safety
-- **Single producer, single consumer** design
-- **Atomic operations** with relaxed memory ordering
-- **No locks or mutexes** in the data path
+- Single producer, single consumer design
+- Atomic operations with relaxed memory ordering
+- No locks in the data path
 
 ### Network Stack
-- **UDP sockets** for connectionless communication
-- **Non-blocking I/O** to prevent producer blocking
-- **Efficient packet parsing** with minimal allocations
+- UDP sockets for connectionless communication
+- Non-blocking I/O
+- Efficient JSON parsing
+- Multicast support for scalability
 
 ## 🤝 Contributing
 
-This project serves as a learning platform for low-latency C++ systems. Feel free to:
-- **Experiment** with different optimization strategies
-- **Add new features** like additional market data formats
-- **Improve performance** through profiling and optimization
-- **Share insights** about low-latency programming techniques
+This is an educational project demonstrating low-latency C++ systems and market microstructure. Feel free to experiment with optimizations and enhancements.
 
 ## 📄 License
 
-Educational project - feel free to use and modify for learning purposes. 
+Educational project - use and modify for learning purposes. 
