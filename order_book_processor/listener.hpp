@@ -18,11 +18,11 @@
 
 class UDPListener {
 private:
-    // TODO: Add member variables for UDP socket
+    // member variables for UDP socket
     // - Socket file descriptor
     // - Port number
     // - Buffer for receiving data
-    // - Callback function for quote processing
+    // - Callback function for quote processing (old, unused)
     
     int socket_fd_;
     uint16_t port_;
@@ -116,7 +116,7 @@ public:
         std::cout << "Socket FD: " << socket_fd_ << std::endl;
         
         // Buffer to receive incoming data
-        char buffer[1024];  // Adjust size based on your quote data format
+        char buffer[1024];  // size based on data format
         struct sockaddr_in client_addr;
         socklen_t client_addr_len = sizeof(client_addr);
         
@@ -341,7 +341,7 @@ private:
         return event;
     }
 
-    // Legacy function for backward compatibility
+    // Old, unused function for parsing quotes
     Quote parse_json_quote(const std::string& json_str) {
         Quote quote;
 

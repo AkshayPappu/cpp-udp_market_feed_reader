@@ -8,8 +8,7 @@
 #include "listener.hpp"
 #include "quote.hpp"
 #include "orderbook.hpp"
-#include "simple_api.hpp"
-#include "../order_book_api/multicast_publisher.hpp"
+#include "multicast_publisher.hpp"
 #include <map>
 #include <set>
 
@@ -20,8 +19,6 @@ std::atomic<bool> shutdown_flag{false};
 // Global order books for each symbol
 std::map<std::string, OrderBook> order_books;
 
-// Global API instance
-std::unique_ptr<SimpleOrderBookAPI> api;
 
 // Global multicast publisher
 std::unique_ptr<MulticastPublisher> multicast_publisher;
@@ -143,9 +140,7 @@ void print_consumer(SPSCRingBuffer<OrderBookEvent>& queue) {
                 default:
                     break;
             }
-            
-            // API is now standalone - no direct updates needed
-            
+                        
             // Publish to multicast
             if (multicast_publisher) {
                 uint64_t timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -218,9 +213,9 @@ int main() {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     
-    // TODO: Configure these parameters
-    const uint16_t udp_port = 12345;  // Change to your UDP port
-    const size_t queue_capacity = 10000;  // Adjust based on your needs
+    // Configurable parameters
+    const uint16_t udp_port = 12345;
+    const size_t queue_capacity = 10000;
     
     try {
         // Initialize multicast publisher (API is now standalone)
@@ -258,9 +253,7 @@ int main() {
         std::cerr << "Exception in main: " << e.what() << std::endl;
         return 1;
     }
-    
-    // API is now standalone - no shutdown needed
-    
+        
     std::cout << "UDP Quote Printer - Shutdown complete" << std::endl;
     return 0;
 } 

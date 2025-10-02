@@ -67,7 +67,7 @@ struct OrderBookEvent {
           side(s), price(p), size(sz) {}
 };
 
-// Legacy Quote struct for backward compatibility
+// Legacy Quote struct (Not used currently)
 struct Quote {
     // Core market data (top-of-book)
     std::string symbol;

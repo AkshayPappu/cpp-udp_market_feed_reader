@@ -201,6 +201,7 @@ class MarketDataSimulator:
         
         return event
     
+    """Old function, no longer being used"""
     def generate_quote(self, symbol):
         """Generate a realistic quote for a symbol (legacy support)"""
         base_price = self.base_prices[symbol]
