@@ -54,8 +54,8 @@ void ingress_producer(SPSCRingBuffer<OrderBookEvent>& queue, UDPListener& listen
         if (queue.try_push(e)) {
             // Successfully pushed event to queue - just update counters
             // No printing from producer thread (one writer rule)
-            uint64_t udp_to_queue = (e.udp_rx_mono_ns > 0 && enq_ns >= e.udp_rx_mono_ns)
-                ? (enq_ns - e.udp_rx_mono_ns) : 0ULL;
+            uint64_t udp_to_queue = (e.udp_rx_mono_ns > 0 && static_cast<uint64_t>(enq_ns) >= e.udp_rx_mono_ns)
+                ? (static_cast<uint64_t>(enq_ns) - e.udp_rx_mono_ns) : 0ULL;
             events_pushed.fetch_add(1, std::memory_order_relaxed);
             total_push_latency.fetch_add(udp_to_queue, std::memory_order_relaxed);
         } else {
@@ -87,8 +87,8 @@ void print_consumer(SPSCRingBuffer<OrderBookEvent>& queue) {
                 ? (event.udp_rx_mono_ns - event.exchange_mono_ns) : 0ULL;
             uint64_t udp_to_queue = (event.enqueued_mono_ns >= event.udp_rx_mono_ns)
                 ? (event.enqueued_mono_ns - event.udp_rx_mono_ns) : 0ULL;
-            uint64_t queue_to_strategy = (deq_ns >= event.enqueued_mono_ns)
-                ? (deq_ns - event.enqueued_mono_ns) : 0ULL;
+            uint64_t queue_to_strategy = (static_cast<uint64_t>(deq_ns) >= event.enqueued_mono_ns)
+                ? (static_cast<uint64_t>(deq_ns) - event.enqueued_mono_ns) : 0ULL;
             uint64_t total_latency = exch_to_udp + udp_to_queue + queue_to_strategy;
             
             // Update statistics counters
@@ -114,16 +114,21 @@ void print_consumer(SPSCRingBuffer<OrderBookEvent>& queue) {
             
             switch (event.event_type) {
                 case OrderBookEventType::ADD_ORDER:
-                    book.add_order(event.side, event.price, event.size);
+                    // O(1) add order by order_id
+                    book.add_order(event.order_id, event.side, event.price, event.size, 
+                                 event.symbol, event.timestamp);
                     break;
                 case OrderBookEventType::MODIFY_ORDER:
-                    book.modify_order(event.side, event.price, event.size);
+                    // O(1) modify order by order_id
+                    book.modify_order(event.order_id, event.size);
                     break;
                 case OrderBookEventType::CANCEL_ORDER:
-                    book.cancel_order(event.side, event.price, event.size);
+                    // O(1) cancel order by order_id
+                    book.cancel_order(event.order_id);
                     break;
                 case OrderBookEventType::DELETE_ORDER:
-                    book.cancel_order(event.side, event.price, event.size);
+                    // O(1) cancel order by order_id
+                    book.cancel_order(event.order_id);
                     break;
                 case OrderBookEventType::TRADE:
                     // Trades don't directly modify the order book in this simple implementation
@@ -207,14 +212,15 @@ void print_consumer(SPSCRingBuffer<OrderBookEvent>& queue) {
 }
 
 int main() {
-    std::cout << "UDP Quote Printer - Starting up..." << std::endl;
+    std::cout << "Multicast Market Feed Subscriber - Starting up..." << std::endl;
     
     // Set up signal handling
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     
     // Configurable parameters
-    const uint16_t udp_port = 12345;
+    const std::string multicast_group = "224.0.0.1";  // Standard multicast group
+    const uint16_t multicast_port = 12345;           // Port for market data multicast
     const size_t queue_capacity = 10000;
     
     try {
@@ -227,11 +233,11 @@ int main() {
         
         // Initialize components
         SPSCRingBuffer<OrderBookEvent> event_queue(queue_capacity);
-        UDPListener listener(udp_port);
+        UDPListener listener(multicast_group, multicast_port);
         
-        // Initialize listener
+        // Initialize multicast listener
         if (!listener.initialize()) {
-            std::cerr << "Failed to initialize UDP listener" << std::endl;
+            std::cerr << "Failed to initialize multicast listener" << std::endl;
             return 1;
         }
         
@@ -254,6 +260,6 @@ int main() {
         return 1;
     }
         
-    std::cout << "UDP Quote Printer - Shutdown complete" << std::endl;
+    std::cout << "Multicast Market Feed Subscriber - Shutdown complete" << std::endl;
     return 0;
 } 

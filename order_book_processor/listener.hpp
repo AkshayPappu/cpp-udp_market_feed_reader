@@ -21,23 +21,34 @@ private:
     // member variables for UDP socket
     // - Socket file descriptor
     // - Port number
+    // - Multicast group (optional)
     // - Buffer for receiving data
     // - Callback function for quote processing (old, unused)
     
     int socket_fd_;
     uint16_t port_;
+    std::string multicast_group_;
+    struct ip_mreq mreq_;
+    bool is_multicast_;
     std::function<void(const Quote&)> quote_callback_;
     std::function<void(const OrderBookEvent&)> order_book_callback_;
     std::atomic<bool>* shutdown_flag_;  // Pointer to global shutdown flag
 
 public:
-    // Constructor
+    // Constructor for unicast
     explicit UDPListener(uint16_t port) 
-        : socket_fd_(-1), port_(port), quote_callback_(nullptr), order_book_callback_(nullptr), shutdown_flag_(nullptr) {
+        : socket_fd_(-1), port_(port), multicast_group_(""), is_multicast_(false),
+          quote_callback_(nullptr), order_book_callback_(nullptr), shutdown_flag_(nullptr) {
         // Constructor just initializes member variables
         // socket_fd_ = -1 indicates no socket is open yet
         // quote_callback_ is set to nullptr initially
         // shutdown_flag_ is set to nullptr initially
+    }
+    
+    // Constructor for multicast
+    UDPListener(const std::string& multicast_group, uint16_t port)
+        : socket_fd_(-1), port_(port), multicast_group_(multicast_group), is_multicast_(true),
+          quote_callback_(nullptr), order_book_callback_(nullptr), shutdown_flag_(nullptr) {
     }
     
     // Destructor
@@ -85,20 +96,48 @@ public:
             return false;
         }
         
-        // Verify binding was successful
-        struct sockaddr_in bound_addr;
-        socklen_t bound_addr_len = sizeof(bound_addr);
-        if (getsockname(socket_fd_, (struct sockaddr*)&bound_addr, &bound_addr_len) == 0) {
-            std::cout << "UDP listener bound to " << inet_ntoa(bound_addr.sin_addr) 
-                      << ":" << ntohs(bound_addr.sin_port) << std::endl;
+        // If this is a multicast listener, join the multicast group
+        if (is_multicast_ && !multicast_group_.empty()) {
+            // Set up multicast group membership
+            mreq_.imr_multiaddr.s_addr = inet_addr(multicast_group_.c_str());
+            mreq_.imr_interface.s_addr = INADDR_ANY;  // Use default interface
+            
+            // Join multicast group
+            if (setsockopt(socket_fd_, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq_, sizeof(mreq_)) < 0) {
+                std::cerr << "Failed to join multicast group " << multicast_group_ 
+                          << ": " << strerror(errno) << std::endl;
+                close(socket_fd_);
+                socket_fd_ = -1;
+                return false;
+            }
+            
+            std::cout << "Multicast listener joined group " << multicast_group_ 
+                      << " on port " << port_ << std::endl;
+        } else {
+            // Verify binding was successful for unicast
+            struct sockaddr_in bound_addr;
+            socklen_t bound_addr_len = sizeof(bound_addr);
+            if (getsockname(socket_fd_, (struct sockaddr*)&bound_addr, &bound_addr_len) == 0) {
+                std::cout << "UDP listener bound to " << inet_ntoa(bound_addr.sin_addr) 
+                          << ":" << ntohs(bound_addr.sin_port) << std::endl;
+            }
+            
+            std::cout << "UDP listener initialized on port " << port_ << std::endl;
         }
         
-        std::cout << "UDP listener initialized on port " << port_ << std::endl;
         return true;
     }
     
     void shutdown() {
         if (socket_fd_ != -1) {
+            // Leave multicast group if this was a multicast listener
+            if (is_multicast_ && !multicast_group_.empty()) {
+                if (setsockopt(socket_fd_, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mreq_, sizeof(mreq_)) < 0) {
+                    std::cerr << "Warning: Failed to leave multicast group: " << strerror(errno) << std::endl;
+                }
+                std::cout << "Multicast listener left group " << multicast_group_ << std::endl;
+            }
+            
             close(socket_fd_);
             socket_fd_ = -1;
             std::cout << "UDP listener shutdown complete" << std::endl;
@@ -112,7 +151,12 @@ public:
             return;
         }
         
-        std::cout << "Listening for UDP packets on port " << port_ << "..." << std::endl;
+        if (is_multicast_) {
+            std::cout << "Listening for multicast packets from " << multicast_group_ 
+                      << ":" << port_ << "..." << std::endl;
+        } else {
+            std::cout << "Listening for UDP packets on port " << port_ << "..." << std::endl;
+        }
         std::cout << "Socket FD: " << socket_fd_ << std::endl;
         
         // Buffer to receive incoming data

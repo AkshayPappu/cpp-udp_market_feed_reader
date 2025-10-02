@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Market Data Feed Simulator
-Simulates a UDP market data feed with Level 2/3 order book events for testing the C++ UDP Quote Printer
+Market Data Feed Simulator - Multicast Version
+Simulates a multicast market data feed with Level 2/3 order book events for testing the C++ Multicast Subscriber
 """
 
 import socket
@@ -9,6 +9,7 @@ import time
 import json
 import random
 import threading
+import struct
 from datetime import datetime
 import argparse
 from enum import Enum
@@ -27,8 +28,8 @@ class OrderSide(Enum):
     ASK = "ASK"
 
 class MarketDataSimulator:
-    def __init__(self, host='127.0.0.1', port=12345, symbols=None, update_rate=100):
-        self.host = host
+    def __init__(self, multicast_group='224.0.0.1', port=12345, symbols=None, update_rate=100):
+        self.multicast_group = multicast_group
         self.port = port
         self.update_rate = update_rate  # updates per second
         self.running = False
@@ -57,8 +58,25 @@ class MarketDataSimulator:
                 'next_order_id': 1000
             }
         
-        # UDP socket
+        # Multicast socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        
+        # Initialize multicast socket
+        self._initialize_multicast()
+    
+    def _initialize_multicast(self):
+        """Initialize the multicast socket for broadcasting market data"""
+        try:
+            # Set multicast TTL (Time To Live) - how many network hops the packet can make
+            # TTL = 1 means local network only, TTL = 0 means same host only
+            ttl = struct.pack('b', 1)  # TTL = 1 (local network only)
+            self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl)
+            
+            print(f"Multicast market feed initialized: {self.multicast_group}:{self.port}")
+            
+        except Exception as e:
+            print(f"Failed to initialize multicast socket: {e}")
+            raise
         
     def generate_order_book_event(self, symbol):
         """Generate a realistic order book event for a symbol"""
@@ -249,13 +267,13 @@ class MarketDataSimulator:
         return quote
     
     def send_order_book_event(self, event):
-        """Send an order book event as UDP packet"""
+        """Send an order book event via multicast"""
         try:
             # Convert to JSON and encode
             data = json.dumps(event).encode('utf-8')
             
-            # Send to C++ application
-            self.sock.sendto(data, (self.host, self.port))
+            # Send via multicast to all subscribers
+            self.sock.sendto(data, (self.multicast_group, self.port))
             
             # Print what we're sending (for debugging)
             event_type = event['event_type']
@@ -277,13 +295,13 @@ class MarketDataSimulator:
             print(f"Error sending order book event: {e}")
     
     def send_quote(self, quote):
-        """Send a quote as UDP packet (legacy support)"""
+        """Send a quote via multicast (legacy support)"""
         try:
             # Convert to JSON and encode
             data = json.dumps(quote).encode('utf-8')
             
-            # Send to C++ application
-            self.sock.sendto(data, (self.host, self.port))
+            # Send via multicast to all subscribers
+            self.sock.sendto(data, (self.multicast_group, self.port))
             
             # Print what we're sending (for debugging)
             print(f"Sent: {quote['symbol']} Bid: {quote['bid_price']}x{quote['bid_size']} "
@@ -294,9 +312,10 @@ class MarketDataSimulator:
     
     def run_simulation(self):
         """Main simulation loop"""
-        print(f"Starting market data simulation on {self.host}:{self.port}")
+        print(f"Starting multicast market data simulation on {self.multicast_group}:{self.port}")
         print(f"Symbols: {', '.join(self.symbols)}")
         print(f"Update rate: {self.update_rate} quotes/second")
+        print("Broadcasting market data via multicast to all subscribers")
         print("Press Ctrl+C to stop")
         print("-" * 60)
         
@@ -337,9 +356,9 @@ class MarketDataSimulator:
         self.sock.close()
 
 def main():
-    parser = argparse.ArgumentParser(description='Market Data Feed Simulator')
-    parser.add_argument('--host', default='127.0.0.1', help='UDP host (default: 127.0.0.1)')
-    parser.add_argument('--port', type=int, default=12345, help='UDP port (default: 12345)')
+    parser = argparse.ArgumentParser(description='Multicast Market Data Feed Simulator')
+    parser.add_argument('--multicast-group', default='224.0.0.1', help='Multicast group (default: 224.0.0.1)')
+    parser.add_argument('--port', type=int, default=12345, help='Multicast port (default: 12345)')
     parser.add_argument('--rate', type=int, default=100, help='Order book events per second (default: 100)')
     parser.add_argument('--symbols', nargs='+', help='Custom symbols to simulate')
     
@@ -347,7 +366,7 @@ def main():
     
     # Create and start simulator
     simulator = MarketDataSimulator(
-        host=args.host,
+        multicast_group=args.multicast_group,
         port=args.port,
         symbols=args.symbols,
         update_rate=args.rate
